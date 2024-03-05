@@ -195,6 +195,154 @@ app.post('/leaveRequest', (req, res) => {
 });
 
 
+// server.js
+
+// ... (existing code)
+
+// server.js
+
+// ... (existing code)
+
+
+app.put('/editStaff/:staffId', (req, res) => {
+  const staffId = req.params.staffId;
+  const updatedStaffDetails = req.body;
+
+  // Update data in the Staff table
+  const updateStaffSql = `
+    UPDATE Staff
+    SET F_name = ?, L_name = ?, Gender = ?, email = ?, dept_id = ?, hire_date = ?, contact_number = ?
+    WHERE staff_id = ?
+  `;
+
+  connection.query(
+    updateStaffSql,
+    [
+      updatedStaffDetails.firstName,
+      updatedStaffDetails.lastName,
+      updatedStaffDetails.gender,
+      updatedStaffDetails.email,
+      updatedStaffDetails.department,
+      updatedStaffDetails.hireDate,
+      updatedStaffDetails.contactNumber,
+      staffId,
+    ],
+    (updateStaffErr, updateStaffResults) => {
+      if (updateStaffErr) {
+        console.error('Error updating Staff details:', updateStaffErr);
+        return res.json({ status: 'error', message: 'Error updating Staff details' });
+      }
+
+      return res.json({ status: 'success', message: 'Staff details updated successfully' });
+    }
+  );
+});
+
+// ... (existing code)
+
+
+// ... (existing code)
+app.get('/api/department/:departmentName', (req, res) => {
+  const departmentName = req.params.departmentName;
+
+  const fetchDeptIdSql = 'SELECT dept_id FROM Department WHERE d_name = ?';
+
+  connection.query(fetchDeptIdSql, [departmentName], (fetchDeptIdErr, fetchDeptIdResults) => {
+    if (fetchDeptIdErr) {
+      console.error('Error fetching dept_id:', fetchDeptIdErr);
+      return res.json({ status: 'error', message: 'Error fetching department ID' });
+    }
+
+    return res.json(fetchDeptIdResults);
+  });
+});
+
+
+app.delete('/deleteStaff/:staffId', (req, res) => {
+  const staffId = req.params.staffId;
+
+  const deleteStaffSql = 'DELETE FROM Staff WHERE staff_id = ?';
+
+  connection.query(deleteStaffSql, [staffId], (deleteStaffErr, deleteStaffResults) => {
+    if (deleteStaffErr) {
+      console.error('Error deleting Staff:', deleteStaffErr);
+      return res.json({ status: 'error', message: 'Error deleting Staff' });
+    }
+
+    return res.json({ status: 'success', message: 'Staff deleted successfully' });
+  });
+});
+
+
+// server.js
+
+// ... (existing code)
+
+app.post('/alternateArrangement', async (req, res) => {
+  const arrangements = req.body.arrangements;
+
+  try {
+    // Loop through each arrangement and process it
+    for (const arrangement of arrangements) {
+      const { date } = arrangement;
+
+      // Check if the date falls within the range specified by start_date and end_date in LeaveRequest
+      const leaveRequestQuery = `
+        SELECT leave_request_id
+        FROM LeaveRequest
+        WHERE start_date <= ? AND end_date >= ?
+      `;
+
+      const leaveRequestResult = await executeQuery(leaveRequestQuery, [date, date]);
+
+      if (leaveRequestResult.length > 0) {
+        // Date falls within the range, get the leave_request_id
+        const leaveRequestId = leaveRequestResult[0].leave_request_id;
+
+        // Now, store the data in the AlternateArrangement table
+        const insertArrangementQuery = `
+          INSERT INTO AlternateArrangement
+          (leave_request_id, date, subject_lab_name, class, time, alternate_faculty_name)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `;
+
+        await executeQuery(insertArrangementQuery, [
+          leaveRequestId,
+          arrangement.date,
+          arrangement.subjectLab,
+          arrangement.classValue,
+          arrangement.time,
+          arrangement.alternateFacultyName,
+        ]);
+      } else {
+        // Date does not fall within any leave request range, handle accordingly
+        console.log(`No leave request found for the date: ${date}`);
+      }
+    }
+
+    return res.json({ status: 'success', message: 'Alternate arrangement details submitted successfully' });
+  } catch (error) {
+    console.error('Error:', error);
+    return res.json({ status: 'error', message: 'Error processing alternate arrangement details' });
+  }
+});
+
+// Function to execute SQL queries with promises
+function executeQuery(query, values) {
+  return new Promise((resolve, reject) => {
+    connection.query(query, values, (err, results) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(results);
+      }
+    });
+  });
+}
+
+// ... (existing code)
+
+
 
 
 
