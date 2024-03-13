@@ -286,9 +286,9 @@ app.post('/alternateArrangement', async (req, res) => {
     for (const arrangement of arrangements) {
       const { date } = arrangement;
 
-      // Check if the date falls within the range specified by start_date and end_date in LeaveRequest
+      // Fetch the leave_request_id and staff_id from LeaveRequest based on date
       const leaveRequestQuery = `
-        SELECT leave_request_id
+        SELECT leave_request_id, staff_id
         FROM LeaveRequest
         WHERE start_date <= ? AND end_date >= ?
       `;
@@ -296,36 +296,46 @@ app.post('/alternateArrangement', async (req, res) => {
       const leaveRequestResult = await executeQuery(leaveRequestQuery, [date, date]);
 
       if (leaveRequestResult.length > 0) {
-        // Date falls within the range, get the leave_request_id
-        const leaveRequestId = leaveRequestResult[0].leave_request_id;
+        const { leave_request_id, staff_id } = leaveRequestResult[0];
 
         // Now, store the data in the AlternateArrangement table
         const insertArrangementQuery = `
           INSERT INTO AlternateArrangement
-          (leave_request_id, date, subject_lab_name, class, time, alternate_faculty_name)
-          VALUES (?, ?, ?, ?, ?, ?)
+          (leave_request_id, staff_id, date, subject_lab_name, class, time, alternate_faculty_name)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `;
 
         await executeQuery(insertArrangementQuery, [
-          leaveRequestId,
+          leave_request_id,
+          staff_id,
           arrangement.date,
           arrangement.subjectLab,
           arrangement.classValue,
           arrangement.time,
           arrangement.alternateFacultyName,
         ]);
+
+        // Update the status in the Approval table
+        const updateApprovalQuery = `
+          INSERT INTO \`approval\`
+          (leave_request_id, status)
+          VALUES (?, ?)
+        `;
+
+        await executeQuery(updateApprovalQuery, [leave_request_id, 'Pending']);
       } else {
         // Date does not fall within any leave request range, handle accordingly
         console.log(`No leave request found for the date: ${date}`);
       }
     }
 
-    return res.json({ status: 'success', message: 'Alternate arrangement details submitted successfully' });
+    return res.json({ status: 'success', message: 'Data submitted successfully' });
   } catch (error) {
     console.error('Error:', error);
-    return res.json({ status: 'error', message: 'Error processing alternate arrangement details' });
+    return res.json({ status: 'error', message: 'Error processing data' });
   }
 });
+
 
 // Function to execute SQL queries with promises
 function executeQuery(query, values) {
@@ -342,7 +352,27 @@ function executeQuery(query, values) {
 
 // ... (existing code)
 
+app.get('/api/pendingLeaveRequests', (req, res) => {
+  const fetchPendingLeaveRequestsSql = `
+    SELECT lr.staff_id, lr.leave_type_id, lr.start_date, lr.end_date,
+           lr.designation, lr.dept_id, lr.number_of_days, lr.reason, a.status,
+           CONCAT(s.F_name, ' ', s.L_name) AS staff_name, lt.leave_type_name
+    FROM LeaveRequest lr
+    JOIN Staff s ON lr.staff_id = s.staff_id
+    JOIN LeaveType lt ON lr.leave_type_id = lt.leave_type_id
+    JOIN Approval a ON lr.leave_request_id = a.leave_request_id
+    WHERE a.status = 'Pending'
+  `;
 
+  connection.query(fetchPendingLeaveRequestsSql, (fetchPendingLeaveRequestsErr, fetchPendingLeaveRequestsResults) => {
+    if (fetchPendingLeaveRequestsErr) {
+      console.error('Error fetching pending leave requests:', fetchPendingLeaveRequestsErr);
+      return res.json({ status: 'error', message: 'Error fetching pending leave requests' });
+    }
+
+    return res.json(fetchPendingLeaveRequestsResults);
+  });
+});
 
 
 
