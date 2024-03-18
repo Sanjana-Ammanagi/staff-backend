@@ -136,7 +136,7 @@ app.post('/leaveRequest', (req, res) => {
   const { staffId, leaveType, sDates, eDates, designation, department, reason } = req.body;
 
   // Fetch leave_type_id from LeaveType table based on leave_type_name
-  const fetchLeaveTypeIdSql = 'SELECT leave_type_id FROM LeaveType WHERE leave_type_name = ?';
+  const fetchLeaveTypeIdSql = 'SELECT leave_type_id, total_days FROM LeaveType WHERE leave_type_name = ?';
 
   connection.query(fetchLeaveTypeIdSql, [leaveType], (fetchLeaveTypeIdErr, fetchLeaveTypeIdResults) => {
     if (fetchLeaveTypeIdErr) {
@@ -149,6 +149,7 @@ app.post('/leaveRequest', (req, res) => {
     }
 
     const leaveTypeId = fetchLeaveTypeIdResults[0].leave_type_id;
+    const totalDays = fetchLeaveTypeIdResults[0].total_days;
 
     // Fetch dept_id from Department table based on d_name
     const fetchDeptIdSql = 'SELECT dept_id FROM Department WHERE d_name = ?';
@@ -187,7 +188,25 @@ app.post('/leaveRequest', (req, res) => {
             return res.json({ status: 'error', message: 'Error inserting into LeaveRequest table' });
           }
 
-          return res.json({ status: 'success', message: 'Leave request submitted successfully' });
+          // Insert or update data in LeaveBalance table
+          const insertLeaveBalanceSql = `
+            INSERT INTO LeaveBalance (staff_id, leave_type_id, balance)
+            VALUES (?, ?, ?)
+            ON DUPLICATE KEY UPDATE balance = balance + VALUES(balance)
+          `;
+
+          connection.query(
+            insertLeaveBalanceSql,
+            [staffId, leaveTypeId, totalDays],
+            (insertLeaveBalanceErr, insertLeaveBalanceResults) => {
+              if (insertLeaveBalanceErr) {
+                console.error('Error inserting into LeaveBalance:', insertLeaveBalanceErr);
+                return res.json({ status: 'error', message: 'Error updating LeaveBalance table' });
+              }
+
+              return res.json({ status: 'success', message: 'Leave request submitted successfully' });
+            }
+          );
         }
       );
     });
@@ -317,7 +336,7 @@ app.post('/alternateArrangement', async (req, res) => {
 
         // Update the status in the Approval table
         const updateApprovalQuery = `
-          INSERT INTO \`approval\`
+          INSERT INTO \approval\
           (leave_request_id, status)
           VALUES (?, ?)
         `;
@@ -355,13 +374,13 @@ function executeQuery(query, values) {
 app.get('/api/pendingLeaveRequests', (req, res) => {
   const fetchPendingLeaveRequestsSql = `
     SELECT lr.staff_id, lr.leave_type_id, lr.start_date, lr.end_date,
-           lr.designation, lr.dept_id, lr.number_of_days, lr.reason, a.status,
-           CONCAT(s.F_name, ' ', s.L_name) AS staff_name, lt.leave_type_name
+          lr.designation, lr.dept_id, lr.number_of_days, lr.reason, a.status,
+          CONCAT(s.F_name, ' ', s.L_name) AS staff_name, lt.leave_type_name
     FROM LeaveRequest lr
     JOIN Staff s ON lr.staff_id = s.staff_id
     JOIN LeaveType lt ON lr.leave_type_id = lt.leave_type_id
     JOIN Approval a ON lr.leave_request_id = a.leave_request_id
-    WHERE a.status = 'Pending'
+    WHERE a.status IN ('Pending', 'Accepted');
   `;
 
   connection.query(fetchPendingLeaveRequestsSql, (fetchPendingLeaveRequestsErr, fetchPendingLeaveRequestsResults) => {
@@ -374,6 +393,82 @@ app.get('/api/pendingLeaveRequests', (req, res) => {
   });
 });
 
+
+app.get('/api/alternateArrangement/:staffId', (req, res) => {
+  const staffId = req.params.staffId;
+
+  const fetchArrangementsSql = `
+    SELECT aa.arrangement_id, aa.date, aa.subject_lab_name, aa.class, aa.time, aa.alternate_faculty_name
+    FROM AlternateArrangement aa
+    WHERE aa.staff_id = ?
+  `;
+
+  connection.query(fetchArrangementsSql, [staffId], (err, results) => {
+    if (err) {
+      console.error('Error fetching alternate arrangements:', err);
+      return res.json({ status: 'error', message: 'Error fetching alternate arrangements' });
+    }
+    return res.json(results);
+  });
+});
+
+app.get('/api/leaveBalance/:staffId', (req, res) => {
+  const staffId = req.params.staffId;
+
+  const fetchLeaveBalanceSql = `
+    SELECT lb.leave_type_id, lb.balance
+    FROM LeaveBalance lb
+    WHERE lb.staff_id = ?
+  `;
+
+  connection.query(fetchLeaveBalanceSql, [staffId], (err, results) => {
+    if (err) {
+      console.error('Error fetching leave balance:', err);
+      return res.json({ status: 'error', message: 'Error fetching leave balance' });
+    }
+    return res.json(results);
+  });
+});
+
+app.put('/api/approveLeave/:leaveRequestId', (req, res) => {
+  const leaveRequestId = req.params.leaveRequestId;
+  const { status } = req.body;
+
+  // Update the status in the Approval table
+  const updateQuery = `
+    UPDATE Approval
+    SET status = ?
+    WHERE leave_request_id = ?
+  `;
+
+  connection.query(updateQuery, [status, leaveRequestId], (error, results) => {
+    if (error) {
+      console.error('Error updating leave approval status:', error);
+      res.status(500).json({ status: 'error', message: 'Error updating leave approval status' });
+      return;
+    }
+    res.json({ status: 'success', message: 'Leave approval status updated successfully' });
+  });
+});
+
+
+app.get('/api/leaveBalance/:staffId', (req, res) => {
+  const staffId = req.params.staffId;
+
+  const fetchLeaveBalanceSql = `
+    SELECT lb.leave_type_id, lb.balance
+    FROM LeaveBalance lb
+    WHERE lb.staff_id = ?
+  `;
+
+  connection.query(fetchLeaveBalanceSql, [staffId], (err, results) => {
+    if (err) {
+      console.error('Error fetching leave balance:', err);
+      return res.json({ status: 'error', message: 'Error fetching leave balance' });
+    }
+    return res.json(results);
+  });
+});
 
 
 app.listen(port, () => {
