@@ -380,7 +380,7 @@ app.get('/api/pendingLeaveRequests', (req, res) => {
     JOIN Staff s ON lr.staff_id = s.staff_id
     JOIN LeaveType lt ON lr.leave_type_id = lt.leave_type_id
     JOIN Approval a ON lr.leave_request_id = a.leave_request_id
-    WHERE a.status IN ('Pending', 'Accepted');
+    WHERE a.status= 'Pending';
   `;
 
   connection.query(fetchPendingLeaveRequestsSql, (fetchPendingLeaveRequestsErr, fetchPendingLeaveRequestsResults) => {
@@ -467,6 +467,146 @@ app.get('/api/leaveBalance/:staffId', (req, res) => {
       return res.json({ status: 'error', message: 'Error fetching leave balance' });
     }
     return res.json(results);
+  });
+});
+
+app.put('/api/approveLeave1/:staffId', (req, res) => {
+  const staffId = req.params.staffId;
+  const { status } = req.body;
+  console.log(staffId);
+  // Query to retrieve leave_request_id based on staff_id
+  const leaveRequestIdQuery = `
+    SELECT lr.leave_request_id
+    FROM LeaveRequest lr
+    WHERE lr.staff_id = ?
+  `;
+
+  connection.query(leaveRequestIdQuery, [staffId], (error, results) => {
+    if (error) {
+      console.error('Error retrieving leave_request_id:', error);
+      res.status(500).json({ status: 'error', message: 'Error updating leave approval status' });
+      return;
+    }
+    console.log(results);
+    if (results.length === 0) {
+      console.error('No leave request found for staff_id:', staffId);
+      res.status(404).json({ status: 'error', message: 'No leave request found for staff' });
+      return;
+    }
+
+    // Extract leave_request_id from the results
+    const leaveRequestId = results[0].leave_request_id;
+
+    // Update query using the retrieved leave_request_id
+    const updateQuery = `
+      UPDATE Approval
+      SET status = ?
+      WHERE leave_request_id = ?
+    `;
+
+    connection.query(updateQuery, [status, leaveRequestId], (updateError, updateResults) => {
+      if (updateError) {
+        console.error('Error updating leave approval status:', updateError);
+        res.status(500).json({ status: 'error', message: 'Error updating leave approval status' });
+        return;
+      }
+
+      res.json({ status: 'success', message: 'Leave approval status updated successfully' });
+    });
+  });
+});
+
+
+
+app.get('/api/approvedLeaveRequests', (req, res) => {
+  const fetchapprovedLeaveRequestsSql = `
+    SELECT lr.staff_id, lr.leave_type_id, lr.start_date, lr.end_date,
+          lr.designation, lr.dept_id, lr.number_of_days, lr.reason, a.status,
+          CONCAT(s.F_name, ' ', s.L_name) AS staff_name, lt.leave_type_name
+    FROM LeaveRequest lr
+    JOIN Staff s ON lr.staff_id = s.staff_id
+    JOIN LeaveType lt ON lr.leave_type_id = lt.leave_type_id
+    JOIN Approval a ON lr.leave_request_id = a.leave_request_id
+    WHERE a.status= 'Approved';
+  `;
+
+  connection.query(fetchapprovedLeaveRequestsSql, (fetchapprovedLeaveRequestsErr, fetchapprovedLeaveRequestsResults) => {
+    if (fetchapprovedLeaveRequestsErr) {
+      console.error('Error fetching approved leave requests:', fetchapprovedLeaveRequestsErr);
+      return res.json({ status: 'error', message: 'Error fetching approved leave requests' });
+    }
+
+    return res.json(fetchapprovedLeaveRequestsResults);
+  });
+});
+
+
+app.put('/api/declineleave/:staffId', (req, res) => {
+  const staffId = req.params.staffId;
+  const { status } = req.body;
+  console.log(staffId);
+  // Query to retrieve leave_request_id based on staff_id
+  const leaveRequestIdQuery = `
+    SELECT lr.leave_request_id
+    FROM LeaveRequest lr
+    WHERE lr.staff_id = ?
+  `;
+
+  connection.query(leaveRequestIdQuery, [staffId], (error, results) => {
+    if (error) {
+      console.error('Error retrieving leave_request_id:', error);
+      res.status(500).json({ status: 'error', message: 'Error updating leave decline status' });
+      return;
+    }
+    console.log(results);
+    if (results.length === 0) {
+      console.error('No leave request found for staff_id:', staffId);
+      res.status(404).json({ status: 'error', message: 'No leave request found for staff' });
+      return;
+    }
+
+    // Extract leave_request_id from the results
+    const leaveRequestId = results[0].leave_request_id;
+
+    // Update query using the retrieved leave_request_id
+    const updateQuery = `
+      UPDATE Approval
+      SET status = ?
+      WHERE leave_request_id = ?
+    `;
+
+    connection.query(updateQuery, [status, leaveRequestId], (updateError, updateResults) => {
+      if (updateError) {
+        console.error('Error updating leave decline status:', updateError);
+        res.status(500).json({ status: 'error', message: 'Error updating leave decline status' });
+        return;
+      }
+
+      res.json({ status: 'success', message: 'Leave decline status updated successfully' });
+    });
+  });
+});
+
+
+app.get('/api/declinedLeaveRequests', (req, res) => {
+  const fetchdeclinedLeaveRequestsSql = `
+    SELECT lr.staff_id, lr.leave_type_id, lr.start_date, lr.end_date,
+          lr.designation, lr.dept_id, lr.number_of_days, lr.reason, a.status,
+          CONCAT(s.F_name, ' ', s.L_name) AS staff_name, lt.leave_type_name
+    FROM LeaveRequest lr
+    JOIN Staff s ON lr.staff_id = s.staff_id
+    JOIN LeaveType lt ON lr.leave_type_id = lt.leave_type_id
+    JOIN Approval a ON lr.leave_request_id = a.leave_request_id
+    WHERE a.status= 'Declined';
+  `;
+
+  connection.query(fetchdeclinedLeaveRequestsSql, (fetchdeclinedLeaveRequestsErr, fetchdeclinedLeaveRequestsResults) => {
+    if (fetchdeclinedLeaveRequestsErr) {
+      console.error('Error fetching declined leave requests:', fetchdeclinedLeaveRequestsErr);
+      return res.json({ status: 'error', message: 'Error fetching declined leave requests' });
+    }
+
+    return res.json(fetchdeclinedLeaveRequestsResults);
   });
 });
 
